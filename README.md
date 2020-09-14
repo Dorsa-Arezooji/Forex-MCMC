@@ -12,7 +12,12 @@ library(forecast)
 ```
 
 ## Overview
-This notebook contains code for log-term prediction of daily forex currency pair rates. However, instructions are included in the notebook for using a dataset with smaller than 24hr candles.
+
+This notebook contains code for log-term prediction of daily forex currency pair rates. However, instructions are included in the notebook for using a dataset with smaller than 24hr candles. 
+
+* You can find the compiled notebook containing all of the results [here](https://github.com/Dorsa-Arezooji/Forex-MCMC/blob/master/Forex-MCMC.nb.html).
+
+## What does it do?
 
 1. The data is loaded, preprocessed, and split into training and testing automatically. 
 
