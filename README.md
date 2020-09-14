@@ -41,7 +41,7 @@ and accuracy (in prediction):
 
 <img src="images/GBPCHF-all.png" width="600">
 
- * The Bayesian models outperformed the ARIMA model, yielding a prediction accuracy of `98.3%` as aposed to `75.7%`.
+ * The Bayesian models outperformed the ARIMA model, yielding a prediction accuracy of `98.3%` as apposed to `75.7%`.
     
 ## References
 
