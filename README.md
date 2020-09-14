@@ -3,6 +3,14 @@
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
+## Required Libraries
+```{r}
+library(bsts)
+library(ggplot2)
+library(scales)
+library(forecast)
+```
+
 ## Overview
 This notebook contains code for log-term prediction of daily forex currency pair rates. However, instructions are included in the notebook for using a dataset with smaller than 24hr candles.
 
@@ -30,3 +38,8 @@ and accuracy (in prediction):
 
  * The Bayesian models outperformed the ARIMA model, yielding a prediction accuracy of `98.3%` as aposed to `75.7%`.
     
+## References
+
+[1]  Scott, Steven & Varian, Hal. (2014). Predicting the Present with Bayesian Structural Time Series. Int. J. of Mathematical Modelling and Numerical Optimisation. 5. 4 - 23. 10.1504/IJMMNO.2014.059942. 
+
+[2]  Scott, Steven. (2020). The ["bsts"](https://cran.r-project.org/web/packages/bsts/bsts.pdf) Package Manual,
