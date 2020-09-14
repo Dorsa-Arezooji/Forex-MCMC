@@ -1,0 +1,222 @@
+---
+title: "Forex Forecasting with MCMC"
+output: html_notebook
+author: "[Dorsa M. Arezooji](https://Dorsa-Arezooji.github.io)"
+---
+
+***
+
+## 0. Loading the required packages
+```{r}
+library(bsts)
+library(ggplot2)
+library(scales)
+library(forecast)
+```
+## 1. Loading the data and creating the dataframe
+
+I used the `USDAUD` dataset for demonstration, but you can use any other dataset:
+
+`data.EURUSD = read.csv('EURUSD-2000-2020-15m.csv')` or `data.USDCAD = read.csv('USDCAD-2000-2020-15m.csv')`
+
+#### *Note*
+
+* If you use `n * train_test_split` instead of `n_train`, this will add extra identical rows like 2.1 4.1 in the training df!
+
+```{r}
+setwd('/home/dorsa/Desktop/projects/ForexMCMC')
+set.seed(2020)
+```
+## 2. Functions
+
+
+##### 2.1. `load_split()`
+
+* This function loads and preprocesses the dataset by storing the data in a dataframe, formatting the column values, and then splits it into the training and testing dataframes.
+
+* If your dataset has smaller time-frames (hour, minute, second), use `as.POSIXct()` instead of `as.Date()` with a correct format:
+  
+  01 Jan 2020 - 00:00:00 $\longrightarrow$ `as.POSIXct(data$TimeStamp, format = "%d %b %Y - %H:%M:%S")`
+
+* `n_skip = 1` skips the first row of the dataset by default (assuming the first row contains headers). However, if you are using a large dataset (specially if you have smaller candles), R might crash in the sampling process. So it might be a good idea to skip a number of rows to reduce the data to the more recent points in time .
+
+##### 2.2. `resDF()`
+
+* This function stores the actual values, the predictions, and the points in time in a dataframe.
+
+##### 2.3. `resviz()`
+
+* This function uses the dataframe created by `resDF()` to plot the predictions and the actual values.
+
+##### 2.4. `Accuracy()`
+
+* This function calculates the accuracy of predictions using MAPE (Mean Absolute Percentage Error).
+```{r}
+load_split = function(data_csv, n_skip = 1, train_test_split, print_df = FALSE){
+  data = read.csv(data_csv, skip = n_skip, header = FALSE, col.names = c('TimeStamp', 'Rate'))
+  df = data.frame(as.Date(data$TimeStamp, format = "%d %b %Y"), as.numeric(data$Rate))
+  names(df) = c('TimeStamp', 'Rate')
+  n = nrow(df)
+  n_train = floor(n * train_test_split) 
+  n_test = n - n_train
+  df.train = df[1:n_train,]
+  df.test = df[-(1:n_train),]
+  rownames(df.test) = 1:nrow(df.test)
+  l = list(df, df.train, df.test, n_train, n_test)
+  if (print_df == TRUE){
+    print('train df: ', quote = FALSE)
+    print(df.train)
+    print('test df: ', quote = FALSE)
+    print(df.test)
+  }
+  return(l)
+}
+
+resDF = function(pred, actual){
+  res = unlist(c(pred["original.series"], pred["mean"]))
+  interval_L = unlist(c(rep(NA, n_train), pred[["interval"]][1,]))
+  interval_U = unlist(c(rep(NA, n_train), pred[["interval"]][2,]))
+  results = data.frame(actual[[1]], actual[[2]], res, interval_L, interval_U)
+  names(results) = c('DateTime', 'Actual', 'Prediction', 'L', 'U')
+  return(results)
+}
+
+resviz = function(results, title = ''){
+  ggplot(results, aes(x = DateTime)) + 
+  theme_bw() + theme(legend.title = element_blank(), plot.title = element_text(hjust = 0.5), legend.position = "bottom") + labs(title = title, x = 'Time', y = 'Rate') + 
+  geom_line(aes(y = Actual, color = 'Actual')) +
+  geom_line(aes(y = Prediction, color = 'Prediction'), linetype = 5) +
+  geom_ribbon(aes(ymin = L, ymax = U), fill = 'grey', alpha = 0.3) +
+  geom_vline(xintercept = results[n_train, 1], linetype = 4, color = 'blue', alpha = 0.3 )
+}
+
+Accuracy = function(test, pred){
+accuracy = 100 - mean(abs(test[['Rate']] - pred[['mean']])/test[['Rate']]) * 100
+return(accuracy)
+}
+```
+## 3. Defining the model
+```{r}
+df_list = load_split('GBPCHF_daily_2016_2020.csv', train_test_split = 0.6, print_df = TRUE)
+df = df_list[[1]]
+df.train = df_list[[2]]
+df.test = df_list[[3]]
+n_train = df_list[[4]]
+n_test = df_list[[5]]
+```
+### 3.1. Local linear trend
+```{r}
+ss_1 = AddLocalLinearTrend(list(), df.train[[2]])
+model_1 = bsts(df.train[[2]], state.specification = ss_1, niter = 2000, seed = 2020)
+```
+
+```{r}
+plot(model_1)
+```
+#### Prediction using `model_1`
+```{r}
+pred_model_1 = predict(model_1, horizon = n_test, burn = SuggestBurn(0.1, model_1))
+res_model_1 = resDF(pred_model_1, df)
+resviz(res_model_1, title = 'GBPCHF - Model 1')
+print(Accuracy(df.test, pred_model_1))
+```
+### 3.2. Local linear trend + Seasonal(52x7)
+```{r}
+ss_2 = AddLocalLinearTrend(list(), df.train[[2]])
+ss_2 = AddSeasonal(ss_2, df.train[[2]], nseasons = 52 , season.duration = 7)
+model_2 = bsts(df.train[[2]], state.specification = ss_2, niter = 2000, seed = 2020)
+```
+#### Prediction using `model_2`
+```{r}
+pred_model_2 = predict(model_2, horizon = n_test, burn = SuggestBurn(0.1, model_2))
+res_model_2 = resDF(pred_model_2, df)
+resviz(res_model_2, title = 'GBPCHF - Model 2')
+print(Accuracy(df.test, pred_model_2))
+```
+### 3.3. Local linear trend + Seasonal(52x7) + Seasonal(12x30)
+```{r}
+ss_3 = AddLocalLinearTrend(list(), df.train[[2]])
+ss_3 = AddSeasonal(ss_3, df.train[[2]], nseasons = 52 , season.duration = 7)
+ss_3 = AddSeasonal(ss_3, df.train[[2]], nseasons = 12, season.duration = 30)
+model_3 = bsts(df.train[[2]], state.specification = ss_3, niter = 2000, seed = 2020)
+```
+#### Prediction using `model_3`
+```{r}
+pred_model_3 = predict(model_3, horizon = n_test, burn = SuggestBurn(0.1, model_3))
+res_model_3 = resDF(pred_model_3, df)
+resviz(res_model_3, title = 'GBPCHF - Model 3')
+print(Accuracy(df.test, pred_model_3))
+```
+### 3.4. Local linear trend + Trig
+```{r}
+ss_4 = AddLocalLinearTrend(list(), df.train[[2]])
+ss_4 = AddTrig(ss_4, df.train[[2]], period = 365, frequencies = c(1, 2, 4, 12))
+model_4 = bsts(df.train[[2]], state.specification = ss_4, niter = 2000, seed = 2020)
+```
+#### Prediction using `model_4`
+```{r}
+pred_model_4 = predict(model_4, horizon = n_test, burn = SuggestBurn(0.1, model_4))
+res_model_4 = resDF(pred_model_5, df)
+resviz(res_model_4, title = 'GBPCHF - Model 4')
+print(Accuracy(df.test, pred_model_4))
+```
+## 4. Comparison of models
+
+### 4.1. In fitting the training data
+```{r}
+model.list = list('Local Linear' = model_1, 'Local Linear + Seasonal(52x7)' = model_2, 'Local Linear + Seasonal(12x30)' = model_3, 'Local Linear + Trig' = model_4)
+CompareBstsModels(model.list, burn = SuggestBurn(.1, model.list[[1]]), filename = "", colors = c('#42f5b3', '#f5ce42', '#e042f5', '#f5426c'), lwd = 2, xlab = "Time", main = "", grid = TRUE, cutpoint = NULL)
+```
+### 4.2. In predicting the test data
+```{r}
+ggplot(df.test, aes(x = TimeStamp)) + 
+theme_bw() + theme(legend.title = element_blank(), plot.title = element_text(hjust = 0.5), legend.position = c(0.25, 0.2), legend.direction = "vertical") + labs(title = 'GBPCHF - Predictions vs Actual', x = 'Time', y = 'Rate') + scale_x_date(date_labels = "%b %y") +
+geom_line(aes(y = Rate, color = 'Actual'), alpha = 0.3) +
+geom_line(aes(y = pred_model_1[['mean']], color = 'Model 1: Local Linear Trend')) +
+geom_line(aes(y = pred_model_2[['mean']], color = 'Model 2: Local Linear Trend + Seasonal(52x7)')) +
+geom_line(aes(y = pred_model_3[['mean']], color = 'Model 3: Local Linear Trend + Seasonal(12x30)')) +
+geom_line(aes(y = pred_model_4[['mean']], color = 'Model 4: Local Linear Trend + Trig'))
+```
+## 5. Testing the model on another pair
+```{r}
+df_list_EURGBP = load_split('EURGBP_daily_2016_2020.csv', train_test_split = 0.6)
+df_EURGBP = df_list_EURGBP[[1]]
+df.train_EURGBP = df_list_EURGBP[[2]]
+df.test_EURGBP = df_list_EURGBP[[3]]
+
+ss = AddLocalLinearTrend(list(), df.train_EURGBP[[2]])
+ss = AddTrig(ss, df.train_EURGBP[[2]], period = 365, frequencies = c(1, 2, 4, 12))
+model_4_EURGBP = bsts(df.train_EURGBP[[2]], state.specification = ss, niter = 2000, seed = 2020)
+```
+
+```{r}
+pred_model_4_EURGBP = predict(model_4_EURGBP, horizon = n_test, burn = SuggestBurn(0.1, model_4_EURGBP))
+res_model_4_EURGBP = resDF(pred_model_4_EURGBP, df_EURGBP)
+resviz(res_model, title = 'EURGBP - Model 4')
+print(Accuracy(df.test_EURGBP, pred_model_4_EURGBP))
+
+ggplot(df.test_EURGBP, aes(x = TimeStamp)) + 
+theme_bw() + theme(legend.title = element_blank(), plot.title = element_text(hjust = 0.5), legend.position = 'bottom') + labs(title = 'EURGBP - Predictions vs Actual', x = 'Time', y = 'Rate') + scale_x_date(date_labels = "%b %y") +
+geom_line(aes(y = Rate, color = 'Actual'), alpha = 0.3) +
+geom_line(aes(y = pred_model_4_EURGBP[['mean']], color = 'Predicted'))
+```
+## 6. Non-Bayesian models
+
+### 6.1. ARIMA
+```{r}
+model_ARIMA = auto.arima(df.train[[2]])
+summary(model_ARIMA)
+pred_model_ARIMA = data.frame(forecast(model_ARIMA, h = n_test))
+print(100 - mean(abs(df.test[['Rate']] - pred_model_ARIMA[[1]]/df.test[['Rate']]) * 100))
+```
+### 6.2. Comparison
+```{r}
+ggplot(df.test, aes(x = TimeStamp)) + 
+theme_bw() + theme(legend.title = element_blank(), plot.title = element_text(hjust = 0.5), legend.position = c(0.25, 0.25), legend.direction = "vertical") + labs(title = 'GBPCHF - Predictions vs Actual', x = 'Time', y = 'Rate') + scale_x_date(date_labels = "%b %y") +
+geom_line(aes(y = Rate, color = 'Actual'), alpha = 0.3, lwd = 1.2) +
+geom_line(aes(y = pred_model_1[['mean']], color = 'Model 1: Local Linear Trend'), alpha = 0.5) +
+geom_line(aes(y = pred_model_2[['mean']], color = 'Model 2: Local Linear Trend + Seasonal(52x7)'), alpha = 0.5) +
+geom_line(aes(y = pred_model_3[['mean']], color = 'Model 3: Local Linear Trend + Seasonal(12x30)'), alpha = 0.5) +
+geom_line(aes(y = pred_model_4[['mean']], color = 'Model 4: Local Linear Trend + Trig'), lwd = 1.2) +
+geom_line(aes(y = pred_model_ARIMA[[1]], color = 'Model 5: ARIMA'), alpha = 0.5, lwd = 1.2)
+```
